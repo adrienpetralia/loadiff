@@ -1,0 +1,33 @@
+# TransApp (TransAppV2) classifier configuration for the TSTR evaluation.
+# Consumed by scripts/tstr_evaluation/train_classifiers.py (--config).
+# Self-supervised pre-training is optional (--pretrained_path); fine-tuning on the
+# labelled synthetic/real/mixed data is always performed here.
+
+transapp:
+  # --- data / preprocessing ---
+  value_scale: 10000.0          # minmax scaling denominator (Watts -> ~[0, 1])
+  freq: "30min"                 # SMACH sampling rate
+  start_date: "01/01/2021"      # reference start for calendar exogenous features
+  exogene_var:                  # must match n_exogene_var below (6 features)
+    - minute
+    - hour
+    - dayofweek
+    - dayofmonth
+    - dayofyear
+    - month
+  subsequence_length: 1024      # tile yearly curves into windows; null -> full curve
+
+  # --- architecture (TransAppV2Config) ---
+  d_model: 128
+  n_encoder_layers: 3
+  n_head: 8
+
+  # --- optimisation ---
+  epochs: 15
+  batch_size: 32
+  lr: 1.0e-4
+  weight_decay: 1.0e-3
+  patience_es: 3                # early stopping on the real val split
+  n_warmup_epochs: 1
+  num_workers: 4
+  seed: 0

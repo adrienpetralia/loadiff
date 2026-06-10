@@ -1,0 +1,42 @@
+# Apply post-processing / quality control to a directory of generated curves.
+# Usage:
+#   python -m scripts.postprocessing.postprocess_generated_curves \
+#       input.run_dir=/path/to/inference_run \
+#       plausibility_filter.envelope_path=/path/to/plausibility_envelope.json
+
+hydra:
+  run:
+    dir: ${output.dir}/postprocess_${now:%Y-%m-%d_%H-%M-%S}
+
+input:
+  run_dir: ???                       # REQUIRED: an inference output directory
+  samples_file: !!str loadit_samples.npy
+  metadata_file: !!str metadata.csv
+  run_info_file: !!str run_info.json
+  dt_minutes: null                   # null -> derived from run_info.patch_length (1440/patch_length)
+  expected_length: null              # null -> derived from run_info (n_days * patch_length)
+
+physical_filter:
+  hard_min: !!float 0.0
+  hard_max: !!float 60000.0
+  reject_fraction: !!float 0.02
+  max_repair_gap_hours: !!float 2.0
+  numerical_tolerance: !!float 1.0e-6
+  soft_margin: !!float 500.0
+
+features:
+  near_zero_w: !!float 10.0
+  feature_names: null                # ignored when an envelope is provided (uses envelope features)
+
+plausibility_filter:
+  enabled: !!bool true
+  envelope_path: runs_postprocessing/calibrate_smach_train/plausibility_envelope.json  # path to a calibrated plausibility_envelope.json
+  max_outside_features: !!int 0      # > this many out-of-envelope features -> reject
+  groupby_metadata: []               # optional; must match envelope groups
+
+output:
+  dir: !!str runs_postprocessing
+  save_rejected_curves: !!bool true
+  save_repair_masks: !!bool true
+  save_diagnostics: !!bool true
+  save_resolved_config: !!bool true

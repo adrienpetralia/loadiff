@@ -1,0 +1,22 @@
+dataset:
+  name: cer
+  data_path: data/cer/load_curve.parquet
+  path_client_split: data/cer/train_valid_test_id_split.pkl
+  path_metadata: data/cer/labels.parquet
+  bool_col_names:
+
+  value_scale: 10000
+calibration_split: train
+physical_filter:
+  hard_min: 0.0
+  hard_max: 60000.0
+features:
+  near_zero_w: 10.0
+  feature_names: null
+plausibility_filter:
+  lower_quantile: 0.001
+  upper_quantile: 0.999
+  groupby_metadata: []
+  min_group_size: 100
+output_dir: runs_postprocessing
+envelope_filename: plausibility_envelope.json

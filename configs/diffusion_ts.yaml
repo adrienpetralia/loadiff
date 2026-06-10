@@ -1,0 +1,56 @@
+hydra:
+  run:
+    dir: runs_${data.dataset}/${model_name}_${now:%d-%m-%Y_%H-%M}
+
+data:
+  dataset: !!str cer
+  data_path: !!str data/${data.dataset}/load_curve.parquet
+  path_client_split: !!str data/${data.dataset}/train_valid_test_id_split.pkl
+  nb_days: !!int 365
+  patch_length_day: !!int 48
+  value_scale_min: !!int 0
+  value_scale_max: !!int 10000
+  random_window: !!bool false
+  # Per-appliance metadata (only read when training.filter_by_label is non-empty).
+  # bool_col_names must match the columns present in the dataset's metadata parquet.
+  path_parquet_part_metadata: !!str data/${data.dataset}/labels.parquet
+  bool_col_names: [cooker, dishwasher, water_heater]
+
+model_name: !!str diffusion_ts
+
+model:
+  feature_size: !!int 1
+  n_layer_enc: !!int 2
+  n_layer_dec: !!int 3
+  d_model: !!int 128
+  timesteps: !!int 100
+  sampling_timesteps: null
+  loss_type: !!str l1
+  beta_schedule: !!str cosine
+  n_heads: !!int 4
+  mlp_hidden_times: !!int 4
+  eta: !!float 0.0
+  attn_pd: !!float 0.0
+  resid_pd: !!float 0.0
+  kernel_size: null
+  padding_size: null
+  use_ff: !!bool true
+  reg_weight: null
+
+training:
+  global_seed: !!int 0
+  # Per-appliance filtering: train only on clients matching these labels.
+  # Empty => no filtering (unconditioned baseline, backward compatible).
+  # Example: {heater: 1} to keep only clients owning an electric heater.
+  filter_by_label: {}
+  num_workers: !!int 2
+  lr: !!float 1e-4
+  weight_decay: !!float 0
+  batch_size: !!int 8
+  max_epochs: !!int 50
+  log_every: !!int 2000
+  checkpoint_every: !!int 2000
+
+valid:
+  batch_size: !!int 8
+  num_workers: !!int 1

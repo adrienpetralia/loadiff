@@ -1,0 +1,51 @@
+hydra: 
+  run:
+    dir: runs_${data.dataset}/cond/${model_name}
+
+data:
+  dataset: !!str smach
+  data_path: !!str data/${data.dataset}/load_curve.parquet
+  path_client_split: !!str data/${data.dataset}/train_valid_test_id_split.pkl
+  path_parquet_part_metadata: !!str data/${data.dataset}/labels.parquet
+  path_temperature: !!str data/${data.dataset}/temperature.parquet # null 
+  value_scale: !!int 10000
+  value_scale_meteo: !!int 100
+  bool_col_names:
+    - cooker
+    - dishwasher
+    - water_heater
+# cooker, dishwasher, tumble_dryer, water_heater
+
+model_name: !!str loadiff
+
+ditmodelargs:
+  input_size: [365, 48]
+  patch_size: [1, 48]
+  in_channels: !!int 1
+  hidden_size: !!int 192
+  depth: !!int 5
+  n_exo_var: !!int 4
+  temperature: !!bool true
+  multilabels: !!bool true
+
+training:
+  log_every: !!int 30000
+  min_checkpoint_step: !!int 100000 # only persist checkpoints from this step on
+  diffusion_steps: !!int 100
+  global_seed: !!int 0
+  num_workers: !!int 1
+  device: !!str cuda
+  lr: !!float 1e-4
+  weight_decay: !!float 0
+  ema_decay: !!float 0.999
+  batch_size: !!int 128
+  max_steps: !!int 300000
+  n_warmup_steps: !!int 5000
+  scheduler_name: !!str cosine
+
+valid:
+  batch_size: !!int 64
+  num_workers: !!int 1
+  gen_sample_start_date: !!str "2021-01-01"
+  gen_sample_days: !!int 365
+  gen_sample_number: !!int 265

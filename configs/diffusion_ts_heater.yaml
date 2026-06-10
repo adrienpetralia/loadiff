@@ -1,0 +1,15 @@
+# Example: Diffusion-TS trained ONLY on clients owning an electric heater.
+# Usage: python -m scripts.training.train_diffusion_ts --config-name diffusion_ts_heater
+defaults:
+  - diffusion_ts
+  - _self_
+
+model_name: diffusion_ts_heater
+
+data:
+  dataset: cer
+  bool_col_names: [cooker]
+  path_parquet_part_metadata: data/${data.dataset}/labels.parquet
+
+training:
+  filter_by_label: {cooker: 1}

@@ -1,0 +1,37 @@
+hydra:
+  run:
+    dir: runs/${model_name}_${now:%d-%m-%Y_%H-%M}
+
+data:
+  data_path: !!str data/smach/load_curve.parquet
+  path_client_split: !!str data/smach/train_valid_test_id_split.pkl
+  nb_days: !!int 365
+  patch_length_day: !!int 48
+  value_scale_min: !!int 0
+  value_scale_max: !!int 10000
+  random_window: !!bool false
+
+model_name: !!str simple_unet
+
+model:
+  in_channels: !!int 1
+  base_channels: !!int 64
+  channel_mults: [1, 2, 4]
+  num_res_blocks: !!int 2
+  time_emb_dim: !!int 256
+  dropout: !!float 0.1
+
+training:
+  global_seed: !!int 0
+  num_workers: !!int 1
+  lr: !!float 1e-4
+  weight_decay: !!float 0
+  batch_size: !!int 32
+  max_epochs: !!int 200
+  log_every: !!int 200
+  diffusion_steps: !!int 1000
+  schedule_sampler: !!str uniform
+
+valid:
+  batch_size: !!int 32
+  num_workers: !!int 1

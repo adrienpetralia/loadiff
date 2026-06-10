@@ -1,0 +1,17 @@
+# Example: unconditional generation (no conditioning labels).
+# Usage:
+#   python -m scripts.inference.inference_loadiff \
+#       --config-name inference_loadiff_unconditional \
+#       inference.ckpt_path=/path/to/checkpoint.pt
+
+defaults:
+  - inference_loadiff
+  - _self_
+
+inference:
+  mode: unconditional
+  n_samples: 1024
+  batch_size: 256
+  # gen_sample_start_date / gen_sample_days default to the checkpoint's valid.* when null
+  gen_sample_start_date: null
+  gen_sample_days: null

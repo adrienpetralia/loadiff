@@ -1,0 +1,9 @@
+# ROCKET classifier configuration for the TSTR evaluation.
+# Consumed by scripts/tstr_evaluation/train_classifiers.py (--config).
+# ROCKET features (src/evaluation/features_extractor.ROCKET) + sklearn RidgeClassifier.
+
+rocket:
+  n_kernels: 10000        # number of random convolutional kernels
+  seed: 0                 # kernels are rebuilt deterministically from this seed
+  value_scale: 10000.0    # curves are divided by this (Watts -> ~[0, 1]) before ROCKET
+  batch_size: 256         # feature-extraction batch size

@@ -1,0 +1,28 @@
+# Example: user-conditioned generation. The user chooses label values directly
+# in this YAML, with one or several combinations. Field names MUST match the
+# checkpoint's data.bool_col_names (e.g. ev / heater / water_heater for cer_bis).
+# Omitted fields default to -1 (unknown); set missing_field_policy: require_all
+# to forbid omissions. Allowed states: 0 (absent), 1 (present), -1 (unknown).
+# Usage:
+#   python -m scripts.inference.inference_loadiff \
+#       --config-name inference_loadiff_user_conditioned \
+#       inference.ckpt_path=/path/to/checkpoint.pt
+
+defaults:
+  - inference_loadiff
+  - _self_
+
+inference:
+  mode: user_conditioned
+  batch_size: 256
+  conditioning:
+    missing_field_policy: unknown
+    combinations:
+      - values: {cooker: 1}
+        num_samples: 512
+      - values: {cooker: 0}        # water_heater omitted -> filled -1 (unknown)
+        num_samples: 512
+  # Single-combination shorthand (use instead of `combinations`):
+  # conditioning:
+  #    values: {cooker: 1, dishwasher: 1, water_heater: 1}
+  #    num_samples_per_combination: 1000

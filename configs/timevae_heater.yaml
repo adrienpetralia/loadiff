@@ -1,0 +1,15 @@
+# Example: TimeVAE trained ONLY on clients owning an electric heater.
+# Usage: python -m scripts.training.train_timevae --config-name timevae_heater
+defaults:
+  - timevae
+  - _self_
+
+model_name: timevae_heater
+
+data:
+  dataset: cer
+  bool_col_names: [cooker, dishwasher, water_heater]
+  path_parquet_part_metadata: data/${data.dataset}/labels.parquet
+
+training:
+  filter_by_label: {heater: 1}

@@ -1,0 +1,65 @@
+# Base / common configuration for the unified Loadiff inference entrypoint.
+# The model architecture is rebuilt from the checkpoint (ckpt['args']); this
+# config only carries inference-time parameters. Select a mode-specific config
+# with `--config-name inference_loadiff_<mode>` and override `inference.ckpt_path`.
+
+hydra:
+  run:
+    dir: ${inference.output_dir}/inference_${inference.mode}_${now:%Y-%m-%d_%H-%M-%S}
+
+inference:
+  mode: !!str unconditional          # unconditional | dataset_conditioned | user_conditioned
+  ckpt_path: ???                     # REQUIRED: path to a training .pt checkpoint
+  prefer_ema: !!bool true            # prefer EMA weights when present
+  device: !!str cuda
+  seed: !!int 0
+  output_dir: !!str runs_inference
+
+  # --- diffusion sampling ---
+  diffusion_steps: null              # null -> ckpt['args'].training.diffusion_steps
+  timestep_respacing: !!str ""
+  batch_size: !!int 256
+  n_samples: !!int 1024
+
+  # --- generation window (unconditional / user_conditioned) ---
+  gen_sample_start_date: null        # null -> ckpt valid.gen_sample_start_date
+  gen_sample_days: null              # null -> ckpt valid.gen_sample_days
+
+  # --- dataset_conditioned ---
+  split: !!str test                  # test | val | train
+
+  # --- user_conditioned ---
+  conditioning:
+    missing_field_policy: !!str unknown   # unknown (fill -1) | require_all
+    num_samples_per_combination: null
+    values: null                          # single-combination shorthand: {field: state}
+    combinations: null                    # list of {values: {field: state}, num_samples: int}
+
+  # --- temperature source (only required if the model was trained temperature=true) ---
+  temperature_source:
+    dataset: null                    # smach | cer | cer_bis (or null)
+    data_path: null
+    path_parquet_part_metadata: null
+    path_temperature: null
+    bool_col_names: null
+    value_scale_meteo: null
+
+  # --- optional evaluation (compute_report + ROCKET + per-label plots) ---
+  evaluate: !!bool true
+  eval_plot_start_date: !!str "01/01/2025"
+  evaluate_paths:
+    real_data: "data/cer/test_data.npy"     # used when the mode has no ground truth
+    real_data_train: "data/cer/train_data.npy"
+
+# --- optional post-processing / quality control after inference ---
+# Disabled by default: existing inferences keep producing identical outputs.
+postprocessing:
+  enabled: !!bool true
+  run_after_inference: !!bool true
+  config_path: configs/postprocessing/postprocess_generated_curves.yaml  # path to a configs/postprocessing/postprocess_generated_curves.yaml
+  # When plausibility is enabled in that config, auto-derive the envelope path from the
+  # dataset name: <envelope_root>/calibrate_<dataset>_train/<envelope_filename>.
+  # Set auto_envelope_path=false to use the config's literal envelope_path instead.
+  auto_envelope_path: !!bool true
+  envelope_root: !!str runs_postprocessing
+  envelope_filename: !!str plausibility_envelope.json

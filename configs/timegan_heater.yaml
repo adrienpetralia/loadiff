@@ -1,0 +1,15 @@
+# Example: TimeGAN trained ONLY on clients owning an electric heater.
+# Usage: python -m scripts.training.train_timegan --config-name timegan_heater
+defaults:
+  - timegan
+  - _self_
+
+model_name: timegan_heater
+
+data:
+  dataset: cer
+  bool_col_names: [cooker, dishwawher, water_heater]
+  path_parquet_part_metadata: data/${data.dataset}/labels.parquet
+
+training:
+  filter_by_label: {heater: 1}

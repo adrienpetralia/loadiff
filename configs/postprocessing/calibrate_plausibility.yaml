@@ -1,0 +1,38 @@
+# Calibrate plausibility envelopes on REAL data (train split only).
+# Usage:
+#   python -m scripts.postprocessing.calibrate_plausibility_envelopes \
+#       dataset.name=cer calibration_split=train
+
+hydra:
+  run:
+    dir: ${output_dir}/calibrate_${dataset.name}_${calibration_split}_${now:%Y-%m-%d_%H-%M-%S}
+
+dataset:
+  name: !!str smach
+  data_path: !!str data/${dataset.name}/load_curve.parquet
+  path_client_split: !!str data/${dataset.name}/train_valid_test_id_split.pkl
+  path_metadata: !!str data/${dataset.name}/labels.parquet   # only needed for groupby
+  bool_col_names:
+    - cooker
+    - dishwasher
+    - water_heater
+  value_scale: !!int 10000
+
+calibration_split: !!str train      # train (recommended) | val ; never test
+
+physical_filter:
+  hard_min: !!float 0.0
+  hard_max: !!float 60000.0
+
+features:
+  near_zero_w: !!float 10.0
+  feature_names: null                # null -> all computable features
+
+plausibility_filter:
+  lower_quantile: !!float 0.001
+  upper_quantile: !!float 0.999
+  groupby_metadata: []               # e.g. [heater] to build per-group envelopes
+  min_group_size: !!int 100          # groups smaller than this fall back to global
+
+output_dir: !!str runs_postprocessing
+envelope_filename: !!str plausibility_envelope.json

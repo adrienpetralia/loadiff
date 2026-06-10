@@ -1,0 +1,7 @@
+data_path: !!str data/cer/load_curve.parquet
+path_client_split: !!str data/cer/train_valid_test_id_split.pkl
+nb_days: !!int 365
+patch_length_day: !!int 48
+value_scale_min: !!int 0
+value_scale_max: !!int 10000
+random_window: !!bool false

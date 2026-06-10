@@ -1,0 +1,25 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Data files
+data_test/
+*.parquet
+*.csv
+*.pt
+*.png
+*.db
+*.ckpt
+*.npy
+
+# Outputs and jobs files
+runs/
+runs_inference/
+jobs/

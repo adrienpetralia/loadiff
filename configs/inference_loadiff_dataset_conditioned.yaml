@@ -1,0 +1,22 @@
+# Example: dataset-conditioned generation. Copies real exogenous features
+# (calendar [+temperature]) and labels from a reference dataset split, exactly
+# like the legacy conditional inference script.
+# Usage:
+#   python -m scripts.inference.inference_loadiff \
+#       --config-name inference_loadiff_dataset_conditioned \
+#       inference.ckpt_path=/path/to/checkpoint.pt inference.split=test
+
+defaults:
+  - inference_loadiff
+  - _self_
+
+inference:
+  mode: dataset_conditioned
+  split: test
+  n_samples: 1024
+  batch_size: 256
+  evaluate: true
+  # Optional: provide reference arrays to enable evaluation metrics/plots.
+  evaluate_paths:
+    real_data: null
+    real_data_train: nulls

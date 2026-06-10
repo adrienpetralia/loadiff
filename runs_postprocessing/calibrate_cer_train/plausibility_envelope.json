@@ -1,0 +1,143 @@
+{
+  "bounds": {
+    "daily_energy_mean": [
+      1234.9496493150687,
+      85105.10905721493
+    ],
+    "daily_energy_std": [
+      691.6879301321122,
+      47651.527122397856
+    ],
+    "daily_peak_max": [
+      1568.52,
+      26159.104000000036
+    ],
+    "daily_peak_mean": [
+      234.35767671232878,
+      12734.624175342735
+    ],
+    "fraction_at_lower_bound": [
+      0.0,
+      0.4973566210046014
+    ],
+    "fraction_at_upper_bound": [
+      0.0,
+      0.0
+    ],
+    "fraction_zero_or_near_zero": [
+      0.0,
+      0.6132929223744347
+    ],
+    "load_factor": [
+      0.010012670601620446,
+      0.20073663366488312
+    ],
+    "longest_zero_or_near_zero_run_hours": [
+      0.0,
+      808.4180000001245
+    ],
+    "max": [
+      1568.52,
+      26159.104000000036
+    ],
+    "max_absolute_first_difference": [
+      1239.384,
+      22538.464000000018
+    ],
+    "max_absolute_second_difference": [
+      2040.104,
+      40346.504000000314
+    ],
+    "mean": [
+      51.45623538812785,
+      3546.046210717289
+    ],
+    "mean_absolute_first_difference": [
+      21.58289537074034,
+      1395.5619069581637
+    ],
+    "mean_absolute_second_difference": [
+      36.661698674088406,
+      2296.5344502124913
+    ],
+    "median": [
+      7.648,
+      2596.580000000063
+    ],
+    "min": [
+      0.0,
+      442.0240000000149
+    ],
+    "q01": [
+      0.0,
+      893.0800000000227
+    ],
+    "q05": [
+      0.0,
+      1049.5440000000408
+    ],
+    "q25": [
+      0.0,
+      1498.682000000005
+    ],
+    "q75": [
+      20.0,
+      4906.552000000181
+    ],
+    "q95": [
+      129.296,
+      11036.406800000179
+    ],
+    "q95_absolute_first_difference": [
+      69.912,
+      6030.743200000159
+    ],
+    "q99": [
+      243.912,
+      16467.272800000082
+    ],
+    "std": [
+      94.34466252683332,
+      3628.9943969554784
+    ]
+  },
+  "created_at": "2026-06-03T22:47:39",
+  "dataset": "cer",
+  "dt_minutes": 30.0,
+  "feature_names": [
+    "mean",
+    "std",
+    "min",
+    "max",
+    "median",
+    "q01",
+    "q05",
+    "q25",
+    "q75",
+    "q95",
+    "q99",
+    "fraction_at_lower_bound",
+    "fraction_at_upper_bound",
+    "mean_absolute_first_difference",
+    "max_absolute_first_difference",
+    "q95_absolute_first_difference",
+    "mean_absolute_second_difference",
+    "max_absolute_second_difference",
+    "fraction_zero_or_near_zero",
+    "longest_zero_or_near_zero_run_hours",
+    "daily_energy_mean",
+    "daily_energy_std",
+    "daily_peak_mean",
+    "daily_peak_max",
+    "load_factor"
+  ],
+  "groupby_metadata": [],
+  "groups": {},
+  "lower_quantile": 0.001,
+  "min_group_size": 100,
+  "n_curves": 2957,
+  "schema_version": "1.0",
+  "split": "train",
+  "units": "W",
+  "upper_quantile": 0.999
+}

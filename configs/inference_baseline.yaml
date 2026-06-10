@@ -1,0 +1,39 @@
+# Unified inference for the baselines (timegan / timevae / diffusion_ts).
+# Mirrors the loadiff inference interface. The baselines are NOT runtime-conditional:
+# each (appliance, label_value) is a separately trained specialised checkpoint, selected
+# automatically in user_conditioned mode. No temperature, no post-processing.
+#
+# Usage:
+#   python -m scripts.inference.inference_baseline \
+#       inference.baseline=timegan inference.dataset=smach inference.mode=unconditional
+#
+#   python -m scripts.inference.inference_baseline \
+#       inference.baseline=timegan inference.dataset=smach inference.mode=user_conditioned \
+#       'inference.conditioning.combinations=[{values:{cooker:0},num_samples:512},{values:{cooker:1},num_samples:512}]'
+
+hydra:
+  run:
+    dir: ${inference.output_dir}/inference_${inference.baseline}_${inference.mode}_${now:%Y-%m-%d_%H-%M-%S}
+
+inference:
+  baseline: ???                       # REQUIRED: timegan | timevae | diffusion_ts
+  dataset: !!str cer
+  mode: !!str unconditional           # unconditional | user_conditioned
+
+  # Where the specialised / unconditional checkpoints live.
+  runs_root: runs_${inference.dataset}
+  checkpoint_filename: null           # null -> <baseline>_best.pt
+
+  device: !!str cuda
+  seed: !!int 0
+  batch_size: !!int 256
+  n_samples: !!int 1024               # unconditional total / per-combination default
+  sampling_timesteps: null            # diffusion_ts fast sampling override (null -> ckpt)
+  output_dir: !!str runs_inference
+
+  # --- user_conditioned ---
+  # Each combination must reference exactly ONE appliance (single-appliance baselines).
+  conditioning:
+    num_samples_per_combination: null
+    values: null                      # single-combination shorthand: {appliance: 0|1}
+    combinations: null                # list of {values: {appliance: 0|1}, num_samples: int}
