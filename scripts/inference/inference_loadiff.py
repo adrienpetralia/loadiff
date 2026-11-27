@@ -36,9 +36,10 @@ from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 
-from src.loadit.models import DiT
+from src.loadit.models import DiT, MultiLabelEmbedder_old
 from src.loadit.diffusion import create_diffusion
 from src.helpers.dataset import BaseParquetDailyDataset
+from src.helpers.conditioning import complete_unknown_labels
 from src.helpers.loadiff_inference import (
     build_calendar_exog,
     build_user_labels,
@@ -92,11 +93,40 @@ def load_model_from_ckpt(
     train_cfg: DictConfig = ckpt["args"]
     dm = train_cfg.ditmodelargs
 
+    if prefer_ema and "ema" in ckpt:
+        which = "ema"
+    elif "model" in ckpt:
+        which = "model"
+    elif "ema" in ckpt:
+        which = "ema"
+    else:
+        raise KeyError(f"Checkpoint {ckpt_path!r} contains neither 'ema' nor 'model' weights.")
+    weights = ckpt[which]
+    version = int(dm.get("conditioning_version", 1))
+    multilabels = bool(dm.get("multilabels", True))
+    # Unversioned checkpoints used the original loader's constructor defaults.
+    class_dropout = float(dm.get("class_dropout_prob", 0.1)) if version >= 2 else 0.1
+    temp_dropout = float(dm.get("temp_dropout_prob", 0.1)) if version >= 2 else 0.1
+    partial_dropout = float(dm.get("partial_label_dropout_prob", 0.0)) if version >= 2 else 0.0
+
     bool_col_names = OmegaConf.select(train_cfg, "data.bool_col_names", default=None)
     if bool_col_names:
         num_classes = len(bool_col_names)
     else:
         num_classes = int(OmegaConf.select(train_cfg, "ditmodelargs.num_classes", default=0))
+
+    embedding_format = "ternary"
+    table = weights.get("y_embedder.embedding_table.weight")
+    if table is not None and not multilabels:
+        # Recover the saved class count rather than enlarging an old binary table.
+        num_classes = table.shape[0] - int(class_dropout > 0)
+        if num_classes == 1 and bool_col_names:
+            logger.warning("Legacy binary checkpoint shares its present and CFG-null token; retaining its saved table.")
+    elif table is not None:
+        if table.shape[0] == num_classes + 1:
+            embedding_format = "multi_hot"
+        elif table.shape[0] != 3 * num_classes + 1:
+            raise ValueError("Checkpoint label table does not match its recorded appliance columns.")
 
     model = DiT(
         input_size=dm.input_size,
@@ -107,20 +137,22 @@ def load_model_from_ckpt(
         n_exo_var=dm.n_exo_var,
         temperature=bool(OmegaConf.select(train_cfg, "ditmodelargs.temperature", default=False)),
         num_classes=num_classes,
-        multilabels=bool(OmegaConf.select(train_cfg, "ditmodelargs.multilabels", default=True)),
+        multilabels=multilabels,
+        num_heads=int(dm.get("num_heads", 8)) if version >= 2 else 8,
+        class_dropout_prob=class_dropout,
+        temp_dropout_prob=temp_dropout,
+        partial_label_dropout_prob=partial_dropout,
     ).to(device)
-
-    if prefer_ema and "ema" in ckpt:
-        model.load_state_dict(ckpt["ema"])
-        which = "ema"
-    elif "model" in ckpt:
-        model.load_state_dict(ckpt["model"])
-        which = "model"
-    elif "ema" in ckpt:
-        model.load_state_dict(ckpt["ema"])
-        which = "ema"
-    else:
-        raise KeyError(f"Checkpoint {ckpt_path!r} contains neither 'ema' nor 'model' weights.")
+    if num_classes > 0 and embedding_format == "multi_hot":
+        model.y_embedder = MultiLabelEmbedder_old(num_classes, dm.hidden_size, p_uncond=class_dropout).to(device)
+    model.load_state_dict(weights)
+    model.label_embedding_format = embedding_format
+    recorded_unknown = list(dm.get("trained_unknown_slots", [False] * num_classes))
+    model.trained_unknown_slots = (
+        [True] * num_classes if partial_dropout > 0 and embedding_format == "ternary"
+        else recorded_unknown if version >= 2 and embedding_format == "ternary"
+        else [False] * num_classes
+    )
 
     model.eval()
     return model, train_cfg, which
@@ -213,6 +245,13 @@ def run_sampling(
     """
     per_sample_exog = exog.dim() == 3
     preds: List[np.ndarray] = []
+    if y is None and model.num_classes > 0:
+        dropout = getattr(model.y_embedder, "p_uncond", getattr(model.y_embedder, "dropout_prob", 0.0))
+        if dropout <= 0:
+            # Sample once per generated curve, keeping its labels fixed throughout denoising.
+            shape = (n_samples, model.num_classes) if model.multilabels else (n_samples,)
+            y = torch.randint(0, 2 if model.multilabels else model.num_classes, shape)
+            logger.warning("Checkpoint has no trained label-null state; sampling labels with a uniform prior.")
     done = 0
     while done < n_samples:
         b = min(batch_size, n_samples - done)
@@ -325,7 +364,7 @@ def build_unconditional(cfg: DictConfig, train_cfg: DictConfig, device: torch.de
     return ConditionBatch(exog=exog, y=None, n_days=n_days, patch_length=patch_length, n_samples=n_samples)
 
 
-def build_user_conditioned(cfg: DictConfig, train_cfg: DictConfig, device: torch.device) -> ConditionBatch:
+def build_user_conditioned(cfg: DictConfig, train_cfg: DictConfig, device: torch.device, model: Optional[DiT] = None) -> ConditionBatch:
     """Build inputs for ``user_conditioned`` generation from YAML label values."""
     bool_col_names = list(OmegaConf.select(train_cfg, "data.bool_col_names", default=[]) or [])
     multilabels = bool(OmegaConf.select(train_cfg, "ditmodelargs.multilabels", default=True))
@@ -337,6 +376,27 @@ def build_user_conditioned(cfg: DictConfig, train_cfg: DictConfig, device: torch
         multilabels=multilabels,
         default_num_samples=int(cfg.inference.n_samples) if cfg.inference.n_samples is not None else None,
     )
+
+    trained_slots = getattr(model, "trained_unknown_slots", None)
+    if trained_slots is None:
+        dm = train_cfg.ditmodelargs
+        trained_slots = list(dm.get("trained_unknown_slots", [False] * len(bool_col_names)))
+        if int(dm.get("conditioning_version", 1)) >= 2 and float(dm.get("partial_label_dropout_prob", 0.0)) > 0:
+            trained_slots = [True] * len(bool_col_names)
+    requested = y.clone()
+    y, sampled = complete_unknown_labels(
+        y, trained_slots, policy=conditioning.get("unknown_label_policy", "auto"),
+        seed=int(cfg.inference.seed),
+    )
+    if sampled.any():
+        logger.warning(
+            "Sampling %d unspecified appliance states with a uniform binary prior; "
+            "realized and requested values will be saved in metadata.csv.", int(sampled.sum()),
+        )
+        for i, meta in enumerate(row_meta):
+            for k, name in enumerate(bool_col_names):
+                meta[f"requested_{name}"] = int(requested[i, k])
+                meta[name] = int(y[i, k])
 
     start_date, n_days, patch_length = _resolve_gen_window(cfg, train_cfg)
     temp_col = _maybe_temperature_column(cfg, train_cfg, n_days)
@@ -697,7 +757,7 @@ def main(cfg: DictConfig) -> None:
     if mode == "unconditional":
         batch = build_unconditional(cfg, train_cfg, device)
     elif mode == "user_conditioned":
-        batch = build_user_conditioned(cfg, train_cfg, device)
+        batch = build_user_conditioned(cfg, train_cfg, device, model=model)
     else:  # dataset_conditioned
         batch = build_dataset_conditioned(cfg, train_cfg, model, device)
 

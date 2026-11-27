@@ -1,8 +1,10 @@
 # Example: user-conditioned generation. The user chooses label values directly
 # in this YAML, with one or several combinations. Field names MUST match the
 # checkpoint's data.bool_col_names (e.g. ev / heater / water_heater for cer_bis).
-# Omitted fields default to -1 (unknown); set missing_field_policy: require_all
-# to forbid omissions. Allowed states: 0 (absent), 1 (present), -1 (unknown).
+# Omitted fields are unspecified. unknown_label_policy=auto uses trained unknown
+# states, or completes unsupported states with a uniform binary prior for older
+# checkpoints. Set missing_field_policy=require_all to forbid omissions.
+# Allowed states: 0 (absent), 1 (present), -1 (unknown).
 # Usage:
 #   python -m scripts.inference.inference_loadiff \
 #       --config-name inference_loadiff_user_conditioned \

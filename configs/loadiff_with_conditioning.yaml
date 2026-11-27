@@ -27,6 +27,9 @@ ditmodelargs:
   n_exo_var: !!int 4
   temperature: !!bool true
   multilabels: !!bool true
+  class_dropout_prob: !!float 0.1
+  temp_dropout_prob: !!float 0.1
+  partial_label_dropout_prob: !!float 0.1  # train individual unknown appliance states
 
 training:
   log_every: !!int 30000

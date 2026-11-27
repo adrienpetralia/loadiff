@@ -97,8 +97,19 @@ class LabelEmbedder(nn.Module):
         return labels
 
     def forward(self, labels, train, force_drop_ids=None):
+        if labels.ndim == 2 and labels.shape[1] == 1:
+            labels = labels[:, 0]
+        if labels.ndim != 1:
+            raise ValueError("Single-label conditioning expects (B,) or (B, 1) labels.")
+        if not torch.isfinite(labels).all() or not (labels == labels.long()).all():
+            raise ValueError("Class labels must be finite integers.")
+        labels = labels.long()
+        if ((labels < 0) | (labels >= self.embedding_table.num_embeddings)).any():
+            raise ValueError("Class label index is outside the embedding table.")
         use_dropout = self.dropout_prob > 0
         if (train and use_dropout) or (force_drop_ids is not None):
+            if force_drop_ids is not None and not use_dropout and (force_drop_ids == 1).any():
+                raise ValueError("This single-label model has no CFG-null embedding.")
             labels = self.token_drop(labels, force_drop_ids)
         embeddings = self.embedding_table(labels)
         return embeddings
@@ -306,11 +317,9 @@ class MultiLabelEmbedder(nn.Module):
                 f"got {labels.size(1)}"
             )
 
-        labels = labels.long()
-        if ((labels < -1) | (labels > 1)).any():
+        if not torch.isfinite(labels).all() or not ((labels == -1) | (labels == 0) | (labels == 1)).all():
             raise ValueError("labels must only contain values in {-1, 0, 1}")
-
-        return labels
+        return labels.long()
 
     def _apply_partial_dropout(self, labels: torch.Tensor) -> torch.Tensor:
         """
@@ -370,12 +379,14 @@ class MultiLabelEmbedder(nn.Module):
         # Whole-sample unconditional drop for CFG
         if force_drop_ids is not None:
             drop_all = (force_drop_ids == 1).to(device=device, dtype=torch.bool)
+            if drop_all.shape != (B,):
+                raise ValueError(f"force_drop_ids must have shape ({B},).")
         else:
             drop_all = torch.zeros(B, dtype=torch.bool, device=device)
             if train and self.p_uncond > 0:
                 drop_all = torch.rand(B, device=device) < self.p_uncond
 
-        cond_emb = torch.zeros((B, self.hidden_size), device=device)
+        cond_emb = self.embedding_table.weight.new_zeros((B, self.hidden_size))
 
         # Unconditional rows
         if drop_all.any():
@@ -525,10 +536,12 @@ class DiT(nn.Module):
         multilabels=True,
         learn_sigma=True,
         n_exo_var = 0,
-        temperature = False
+        temperature = False,
+        partial_label_dropout_prob=0.0,
     ):
         super().__init__()
         self.num_classes = num_classes
+        self.multilabels = multilabels
         self.learn_sigma = learn_sigma
         self.in_channels = in_channels
         self.out_channels = in_channels * 2 if learn_sigma else in_channels
@@ -547,7 +560,10 @@ class DiT(nn.Module):
 
         if num_classes > 0:
             if multilabels:
-                self.y_embedder = MultiLabelEmbedder(num_classes, hidden_size, class_dropout_prob)
+                self.y_embedder = MultiLabelEmbedder(
+                    num_classes, hidden_size, class_dropout_prob,
+                    p_partial=partial_label_dropout_prob,
+                )
             else:
                 self.y_embedder = LabelEmbedder(num_classes, hidden_size, class_dropout_prob)
 
@@ -661,7 +677,8 @@ class DiT(nn.Module):
                 t: torch.Tensor,
                 exog: Optional[torch.Tensor] = None,
                 y: Optional[torch.Tensor] = None,
-                force_temp_drop: Optional[torch.Tensor] = None):
+                force_temp_drop: Optional[torch.Tensor] = None,
+                force_label_drop: Optional[torch.Tensor] = None):
         """
         force_temp_drop: boolean tensor of shape (B,) or None. 
                          If True for a batch item, drops temperature conditioning.
@@ -708,9 +725,17 @@ class DiT(nn.Module):
         t = self.t_embedder(t) # (N, D)
         
         if y is not None:
-            # Assuming y_embedder handles its own CFG logic via internal force_drop_ids if needed
-            y = self.y_embedder(y, self.training) 
+            y = self.y_embedder(y, self.training, force_drop_ids=force_label_drop)
             c = t + y
+        elif self.num_classes > 0:
+            dropout_prob = getattr(self.y_embedder, "p_uncond", getattr(self.y_embedder, "dropout_prob", 0.0))
+            if dropout_prob <= 0:
+                raise ValueError(
+                    "This conditioned model was trained without label dropout. "
+                    "Supply labels; the inference sampler can sample unspecified labels."
+                )
+            null_idx = getattr(self.y_embedder, "uncond_idx", self.y_embedder.num_classes)
+            c = t + self.y_embedder.embedding_table.weight[null_idx].unsqueeze(0)
         else:
             c = t 
 
@@ -722,41 +747,54 @@ class DiT(nn.Module):
 
         return x
 
-    def forward_with_cfg(self, x, t, exog, y, cfg_scale): 
+    def forward_with_cfg(self, x, t, exog=None, y=None, cfg_scale=1.0, guide_labels=False, guide_temperature=True):
         """
-        Runs the forward pass with Classifier-Free Guidance on temperature.
-        Assumes input 'x' is already a double-batch (cond + uncond) or 
-        you should restructure inputs before calling this.
-        
-        This implementation assumes you pass standard (B) sized inputs, 
-        and it handles the doubling internally for easier usage.
+        Guide temperature by default, optionally also appliance labels.
+        Inputs and output have the same batch size; doubling is internal.
         """
+        if guide_labels and self.num_classes > 0:
+            dropout = getattr(self.y_embedder, "p_uncond", getattr(self.y_embedder, "dropout_prob", 0.0))
+            if dropout <= 0:
+                raise ValueError("Label guidance requires a checkpoint trained with label dropout.")
         
         # 1. Duplicate inputs for CFG (Conditional + Unconditional)
         x_in = torch.cat([x, x], dim=0)
         t_in = torch.cat([t, t], dim=0)
-        exog_in = torch.cat([exog, exog], dim=0) if exog is not None else None
+        B = x.shape[0]
+        if exog is None:
+            exog_in = None
+        elif exog.ndim == 2:
+            exog_in = exog.unsqueeze(0).expand(2 * B, -1, -1)
+        else:
+            exog_in = torch.cat([exog.expand(B, -1, -1), exog.expand(B, -1, -1)], dim=0)
         
         # Handle labels y if they exist
         if y is not None:
+             if self.multilabels and y.ndim == 1:
+                 y = y.unsqueeze(0).expand(B, -1)
              y_in = torch.cat([y, y], dim=0)
-             # If using MultiLabelEmbedder or LabelEmbedder, they usually have their own
-             # CFG logic. If you want to ONLY guide on temperature, keep Y as is.
-             # If you want to guide on both, you might need to pass force_drop to y_embedder too.
         else:
             y_in = None
 
         # 2. Create Drop Mask for Temperature
         # First half: Keep Temp (False). Second half: Drop Temp (True).
-        B = x.shape[0]
         force_temp_drop = torch.cat([
             torch.zeros(B, dtype=torch.bool, device=x.device), # Conditional
             torch.ones(B, dtype=torch.bool, device=x.device)   # Unconditional
         ], dim=0)
+        if not guide_temperature:
+            force_temp_drop = torch.zeros_like(force_temp_drop)
+        force_label_drop = torch.cat([
+            torch.zeros(B, dtype=torch.bool, device=x.device),
+            torch.ones(B, dtype=torch.bool, device=x.device),
+        ]) if guide_labels and y is not None else None
 
         # 3. Forward Pass
         # We use the modified forward that accepts force_temp_drop
-        model_out = self.forward(x_in, t_in, exog=exog_in, y=y_in, force_temp_drop=force_temp_drop)
+        model_out = self.forward(
+            x_in, t_in, exog=exog_in, y=y_in,
+            force_temp_drop=force_temp_drop, force_label_drop=force_label_drop,
+        )
 
         # 4. Split and Guide
         eps, rest = model_out[:, :self.in_channels], model_out[:, self.in_channels:]
@@ -765,11 +803,7 @@ class DiT(nn.Module):
         # Guidance Formula: eps = uncond + scale * (cond - uncond)
         half_eps = uncond_eps + cfg_scale * (cond_eps - uncond_eps)
         
-        # If you need to return the full batch (doubled), concat. 
-        # Usually for inference you only want the guided half.
-        # But to match your original function signature which seemed to return doubled:
-        eps = torch.cat([half_eps, half_eps], dim=0)
-        return torch.cat([eps, rest], dim=1)
+        return torch.cat([half_eps, rest[:B]], dim=1)
 
 
 #################################################################################
