@@ -31,6 +31,7 @@ inference:
   # --- user_conditioned ---
   conditioning:
     missing_field_policy: !!str unknown   # unknown (fill -1) | require_all
+    unknown_label_policy: !!str auto      # auto | sample | require_trained
     num_samples_per_combination: null
     values: null                          # single-combination shorthand: {field: state}
     combinations: null                    # list of {values: {field: state}, num_samples: int}

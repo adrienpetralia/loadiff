@@ -17,12 +17,13 @@ from torch.utils.tensorboard import SummaryWriter
 from copy import deepcopy
 from hydra.core.hydra_config import HydraConfig
 from datetime import timedelta
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
 from src.loadit.models import DiT
 from src.loadit.diffusion import create_diffusion
 from src.helpers.optim.lr_scheduler import get_scheduler
 from src.helpers.dataset import SmachDataset, CERDataset, CERBisDataset
+from src.helpers.conditioning import conditioning_class_count
 from src.helpers.training_utils import update_ema, requires_grad, create_logger
 from src.helpers.plotting import plot_multiple_clients
 from src.evaluation.training_metrics import frechet_distance, get_all_metrics
@@ -49,12 +50,12 @@ def resolve_conditioning(args):
     Returns a tuple ``(bool_col_names, num_classes, conditional, use_temperature)``
     where:
       - ``bool_col_names`` is the (possibly empty) list of label columns;
-      - ``num_classes`` is its length (0 => unconditional model);
+      - ``num_classes`` is the slot count for multilabel models, or 2 for one binary label;
       - ``conditional`` is True when at least one label is used;
       - ``use_temperature`` is True when a temperature file is provided.
     """
     bool_col_names = list(args.data.bool_col_names) if "bool_col_names" in args.data else []
-    num_classes = len(bool_col_names)
+    num_classes = conditioning_class_count(bool_col_names, bool(args.ditmodelargs.multilabels))
     conditional = num_classes > 0
     use_temperature = args.data.get("path_temperature", None) is not None
 
@@ -68,6 +69,8 @@ def build_model(args, num_classes, device):
     """
     Build the DiT model together with its (frozen) EMA copy and the diffusion.
     """
+    OmegaConf.update(args, "ditmodelargs.num_classes", num_classes, force_add=True)
+    OmegaConf.update(args, "ditmodelargs.conditioning_version", 2, force_add=True)
     model = DiT(
         input_size=args.ditmodelargs.input_size,
         patch_size=args.ditmodelargs.patch_size,
@@ -78,6 +81,10 @@ def build_model(args, num_classes, device):
         temperature=args.ditmodelargs.temperature,
         num_classes=num_classes,
         multilabels=args.ditmodelargs.multilabels,
+        num_heads=args.ditmodelargs.get("num_heads", 8),
+        class_dropout_prob=args.ditmodelargs.get("class_dropout_prob", 0.1),
+        temp_dropout_prob=args.ditmodelargs.get("temp_dropout_prob", 0.1),
+        partial_label_dropout_prob=args.ditmodelargs.get("partial_label_dropout_prob", 0.0),
     )
 
     ema = deepcopy(model).to(device)
@@ -129,6 +136,10 @@ def build_dataloaders(args):
 
     logging.info("Loading valid dataset...")
     valid_dataset = build_dataset(args, val_clients)
+
+    # Record naturally observed unknown states for inference with partial labels.
+    unknown_slots = (train_dataset.data_pop == -1).any(dim=0).tolist()
+    OmegaConf.update(args, "ditmodelargs.trained_unknown_slots", unknown_slots, force_add=True)
 
     train_dataloader = DataLoader(
         train_dataset,

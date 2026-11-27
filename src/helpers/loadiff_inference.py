@@ -239,7 +239,7 @@ def build_user_labels(
                     f"Valid labels: {bool_col_names}."
                 )
             state_int = int(state)
-            if state_int not in VALID_LABEL_STATES:
+            if state_int not in VALID_LABEL_STATES or float(state) != state_int:
                 raise ValueError(
                     f"Invalid value {state!r} for label {field!r} in combination #{j}. "
                     f"Allowed states: {{-1 (unknown), 0 (absent), 1 (present)}}."
