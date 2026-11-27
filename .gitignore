@@ -15,6 +15,7 @@ data_test/
 *.csv
 *.pt
 *.png
+!assets/*.png
 *.db
 *.ckpt
 *.npy
